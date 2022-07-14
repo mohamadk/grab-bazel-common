@@ -1,4 +1,4 @@
-load("@io_bazel_rules_kotlin//kotlin:jvm.bzl", "kt_jvm_test")
+load("@io_bazel_rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library")
 load(":runtime_resources.bzl", "runtime_resources")
 
 def grab_android_local_test(
@@ -6,8 +6,6 @@ def grab_android_local_test(
         srcs,
         deps,
         associates = [],
-        custom_package = "",
-        resources = [],
         **kwargs):
     """A macro that generates test targets to execute all android library unit tests.
 
@@ -39,20 +37,19 @@ def grab_android_local_test(
     )
 
     _gen_test_targets(
+        test_compile_rule_type = kt_jvm_library,
+        test_runner_rule_type = native.java_test,
         name = name,
         srcs = srcs,
         associates = associates,
-        deps = deps,
+        deps = deps + [":" + runtime_resources_name],
         test_compile_deps = [
             "@grab_bazel_common//tools/test:mockable-android-jar",
         ],
         test_runtime_deps = [
-            ":" + runtime_resources_name,
             "@grab_bazel_common//tools/test:mockable-android-jar",
             "@com_github_jetbrains_kotlin//:kotlin-reflect",
         ],
-        resources = resources,
-        custom_package = custom_package,
         **kwargs
     )
 
@@ -77,6 +74,8 @@ def grab_kt_jvm_test(
         associates: associates target to allow access to internal members from the main Kotlin target
         """
     _gen_test_targets(
+        test_compile_rule_type = kt_jvm_library,
+        test_runner_rule_type = native.java_test,
         name = name,
         srcs = srcs,
         associates = associates,
@@ -89,14 +88,14 @@ def grab_kt_jvm_test(
     )
 
 def _gen_test_targets(
+        test_compile_rule_type,
+        test_runner_rule_type,
         name,
         srcs,
         deps,
         test_compile_deps,
         test_runtime_deps,
         associates = [],
-        resources = [],
-        custom_package = "",
         **kwargs):
     """A macro to auto generate and compile target and runner targets for tests.
 
@@ -120,7 +119,16 @@ def _gen_test_targets(
     test_runtime_deps: Any dependencies required for the test runner target.
     associates: The list of associate targets to allow access to internal members.
     """
-    test_classes = []
+    test_build_target = name + "_build"
+    test_compile_rule_type(
+        name = test_build_target,
+        srcs = srcs,
+        deps = deps + test_compile_deps,
+        associates = associates,
+        testonly = True,
+    )
+
+    test_names = []
     for src in srcs:
         if src.endswith("Test.kt") or src.endswith("Tests.kt"):
             # src/test/java/com/grab/test/TestFile.kt
@@ -132,70 +140,27 @@ def _gen_test_targets(
             # Find package name from path
             path = path_split[0]  # src/main/java/com/grab/test
 
-            test_package = ""
             if path.find("src/test/java/") != -1 or path.find("src/test/kotlin/") != -1:  # TODO make this path configurable
                 path = path.split("src/test/java/")[1] if path.find("src/test/java/") != -1 else path.split("src/test/kotlin/")[1]  # com/grab/test
                 test_class = path.replace("/", ".") + "." + test_file_name  # com.grab.test.TestFile
-                test_classes.append(test_class)
 
-    test_build_target = name
-    if len(test_classes) > 0:
-        test_package = _common_package(test_classes) if custom_package == "" else custom_package
-        test_package_file = [test_build_target + "_package.kt"]
-        native.genrule(
-            name = test_build_target + "_package",
-            outs = test_package_file,
-            cmd = """
-cat << EOF > $@
-package com.grab.test
-object TestPackageName {{
-    @JvmField
-    val PACKAGE_NAME = "{test_package}"
-}}
-EOF""".format(test_package = test_package),
+                test_target_name = test_class.replace(".", "_")
+                test_names.append(test_target_name)
+
+                test_runner_rule_type(
+                    name = test_class.replace(".", "_"),
+                    test_class = test_class,
+                    runtime_deps = [
+                        ":" + test_build_target,
+                    ] + test_runtime_deps,
+                    jvm_flags = [
+                        "-Xverify:none",
+                    ],
+                    **kwargs
+                )
+
+    if len(test_names) >= 0:
+        native.test_suite(
+            name = name,
+            tests = test_names,
         )
-
-        kt_jvm_test(
-            name = test_build_target,
-            srcs = srcs + test_package_file,
-            deps = deps + test_compile_deps + ["@grab_bazel_common//tools/test-suite:test-suite"],
-            associates = associates,
-            test_class = "com.grab.test.AllTests",
-            jvm_flags = [
-                "-Xverify:none",
-                "-Djava.locale.providers=COMPAT,SPI",
-            ],
-            #shard_count = min(len(test_classes), 16),
-            testonly = True,
-            runtime_deps = test_runtime_deps,
-            resources = resources,
-        )
-
-def _common_package(packages):
-    """
-    Extract common package name from list of provided package name
-    Args:
-    packages: List of package name in the format [com.grab.test], [com.grab]
-    """
-    packages = sorted(packages, reverse = True)
-    common_path = ""
-
-    if len(packages) == 1:
-        chunks = packages[0].split(".")
-        chunks.pop()
-        return ".".join(chunks)
-
-    paths = []
-
-    for package in packages:
-        paths.append(package.split("."))
-
-    for j in range(len(paths[0])):
-        path = paths[0][j]
-        for i in range(len(packages)):
-            if i != 0:
-                if (path != paths[i][j]):
-                    return common_path.strip(".")
-        common_path = common_path + path + "."
-
-    return common_path.strip(".")
