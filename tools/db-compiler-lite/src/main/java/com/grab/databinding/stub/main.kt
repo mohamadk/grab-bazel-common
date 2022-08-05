@@ -16,6 +16,17 @@
 
 package com.grab.databinding.stub
 
+import io.bazel.Status
+import io.bazel.Worker
+
 fun main(args: Array<String>) {
-    BindingStubCommand().main(args)
+    Worker.from(args = args.toList()).run { args ->
+        try {
+            BindingStubCommand().main(args)
+            Status.Success
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Status.Failure
+        }
+    }
 }
