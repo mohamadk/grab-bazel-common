@@ -22,7 +22,7 @@ Outputs:
 def _to_path(f):
     return f.path
 
-def _is_direct(dep, tags):
+def _is_direct(package, dep, tags):
     """
     Given tags containing info about direct dependencies in format @direct//, returns true if given
     label is a direct dependency and false otherwise
@@ -35,7 +35,7 @@ def _is_direct(dep, tags):
         return True
     for tag in tags:
         if tag.startswith("@direct//"):
-            if dep == (tag[9:]):
+            if (tag[9:]).startswith(package + ":" + dep):
                 return True
     for tag in tags:
         if tag.startswith("@direct//"):
@@ -61,7 +61,7 @@ def _databinding_stubs_impl(ctx):
     for target in deps:
         if (DataBindingV2Info in target):
             for class_info in _list_or_depset_to_list(target[DataBindingV2Info].class_infos):
-                if _is_direct(class_info.owner.package, tags):
+                if _is_direct(class_info.owner.package, class_info.owner.name, tags):
                     class_infos[class_info.path] = class_info
         if (AndroidResourcesInfo in target and not non_transitive_r_class):
             r_txts.append(target[AndroidResourcesInfo].compiletime_r_txt)
