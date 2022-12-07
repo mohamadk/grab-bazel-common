@@ -25,9 +25,10 @@ import com.grab.aapt.databinding.binding.store.LayoutTypeStore
 import com.grab.aapt.databinding.di.AaptScope
 import com.grab.aapt.databinding.util.attributesNameValue
 import com.grab.aapt.databinding.util.events
-import com.grab.aapt.databinding.util.extractPrimitiveType
 import com.grab.aapt.databinding.util.toLayoutBindingName
+import com.squareup.javapoet.ArrayTypeName
 import com.squareup.javapoet.ClassName
+import com.squareup.javapoet.ParameterizedTypeName
 import com.squareup.javapoet.TypeName
 import dagger.Binds
 import dagger.Module
@@ -113,8 +114,7 @@ constructor(
                                     bindables.add(
                                         Binding(
                                             rawName = attributes.getValue(NAME),
-                                            typeName = parseBindableTypeName(
-                                                typeName = attributes.getValue(TYPE),
+                                            typeName = attributes.getValue(TYPE).toTypeName(
                                                 importedTypes = importedTypes
                                             ),
                                             bindingType = BindingType.Variable
@@ -147,13 +147,41 @@ constructor(
         }.distinctBy(LayoutBindingData::layoutName)
     }
 
-    private fun parseBindableTypeName(
-        typeName: String,
-        importedTypes: ImportedTypes
-    ): TypeName = if (!typeName.contains(".") && importedTypes.containsKey(typeName)) {
-        importedTypes[typeName] ?: error("Imported type $typeName not found")
-    } else {
-        typeName.extractPrimitiveType() ?: ClassName.bestGuess(typeName)
+    /**
+     * Parses the given type to a [TypeName].
+     * Adapted from https://cs.android.com/androidx/platform/frameworks/data-binding/+/mirror-goog-studio-master-dev:compilerCommon/src/main/kotlin/android/databinding/tool/ext/ext.kt
+     *
+     * @param importedTypes A map of type names to [TypeName] imported in the binding layout.
+     *
+     * @return The parsed [TypeName]
+     */
+    private fun String.toTypeName(
+        importedTypes: ImportedTypes,
+    ): TypeName {
+        if (this.endsWith("[]")) {
+            val qType = this.substring(0, this.length - 2)
+                .trim()
+                .toTypeName(importedTypes)
+            return ArrayTypeName.of(qType)
+        }
+        val genericEnd = this.lastIndexOf(">")
+        if (genericEnd > 0) {
+            val genericStart = this.indexOf("<")
+            if (genericStart > 0) {
+                val typeParams = this.substring(genericStart + 1, genericEnd).trim()
+                val typeParamsQualified = splitTemplateParameters(typeParams).map {
+                    it.toTypeName(importedTypes)
+                }
+                val klass = this.substring(0, genericStart)
+                    .trim()
+                    .toTypeName(importedTypes)
+                return ParameterizedTypeName.get(klass as ClassName,
+                        *typeParamsQualified.toTypedArray())
+            }
+        }
+
+        importedTypes[this]?.let { return it }
+        return PRIMITIVE_TYPE_NAME_MAP[this] ?: ClassName.bestGuess(this)
     }
 
     /**
@@ -259,4 +287,39 @@ constructor(
             }
         }
     }
+
+    private fun splitTemplateParameters(templateParameters: String): ArrayList<String> {
+        val list = ArrayList<String>()
+        var index = 0
+        var openCount = 0
+        val arg = StringBuilder()
+        while (index < templateParameters.length) {
+            val c = templateParameters[index]
+            if (c == ',' && openCount == 0) {
+                list.add(arg.toString())
+                arg.delete(0, arg.length)
+            } else if (!Character.isWhitespace(c)) {
+                arg.append(c)
+                if (c == '<') {
+                    openCount++
+                } else if (c == '>') {
+                    openCount--
+                }
+            }
+            index++
+        }
+        list.add(arg.toString())
+        return list
+    }
 }
+
+private val PRIMITIVE_TYPE_NAME_MAP = mapOf(
+    TypeName.VOID.toString() to TypeName.VOID,
+    TypeName.BOOLEAN.toString() to TypeName.BOOLEAN,
+    TypeName.BYTE.toString() to TypeName.BYTE,
+    TypeName.SHORT.toString() to TypeName.SHORT,
+    TypeName.INT.toString() to TypeName.INT,
+    TypeName.LONG.toString() to TypeName.LONG,
+    TypeName.CHAR.toString() to TypeName.CHAR,
+    TypeName.FLOAT.toString() to TypeName.FLOAT,
+    TypeName.DOUBLE.toString() to TypeName.DOUBLE)
