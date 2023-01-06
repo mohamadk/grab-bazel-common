@@ -17,8 +17,9 @@
 package com.grab.aapt
 
 import com.grab.aapt.databinding.mapper.GenerateMapperCommand
-import io.bazel.Status
+import io.bazel.PERSISTENT_WORKER
 import io.bazel.Worker
+import io.bazel.commandLindArgs
 
 
 enum class Tool {
@@ -37,14 +38,13 @@ enum class Tool {
 }
 
 fun main(args: Array<String>) {
-    Worker.from(args = args.toList()).run { cliArgs ->
-        try {
-            Tool.valueOf(cliArgs.first())
-                .call(cliArgs.drop(1).toTypedArray())
-            Status.Success
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Status.Failure
-        }
+    Worker.create(args,extractAction()).run()
+}
+
+fun extractAction(): (args: Array<String>) -> Unit {
+    return fun (args: Array<String>) {
+        val cliArgs = commandLindArgs(args.filter { it != PERSISTENT_WORKER }.toTypedArray())
+        Tool.valueOf(cliArgs.first())
+            .call(cliArgs.drop(1).toTypedArray())
     }
 }

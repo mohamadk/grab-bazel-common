@@ -1,11 +1,9 @@
 package com.grab
 
-import io.bazel.Status
-import io.bazel.Worker
+import io.bazel.createWorker
 
 fun main(args: Array<String>) {
-    Worker.from(args = args.toList()).run {
-        print(it)
-        Status.Success
-    }
+    createWorker(args = args) {
+        print(it.contentToString())
+    }.run(args)
 }
