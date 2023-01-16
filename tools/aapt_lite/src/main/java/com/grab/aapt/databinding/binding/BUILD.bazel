@@ -14,6 +14,7 @@ kt_jvm_library(
         "//tools/aapt_lite/src/main/java/com/grab/aapt/databinding/common",
         "//tools/aapt_lite/src/main/java/com/grab/aapt/databinding/di:aapt_scope",
         "//tools/aapt_lite/src/main/java/com/grab/aapt/databinding/util",
+        "//tools/worker:worker_lib",
         "@bazel_common_maven//:com_squareup_javapoet",
         "@bazel_common_maven//:com_squareup_moshi_moshi",
     ],

@@ -10,6 +10,7 @@ kt_jvm_library(
     ],
     deps = [
         "//:dagger",
+        "//tools/worker:worker_lib",
         "@bazel_common_maven//:com_squareup_javapoet",
         "@bazel_common_maven//:net_sf_kxml_kxml2",
         "@bazel_common_maven//:xmlpull_xmlpull",

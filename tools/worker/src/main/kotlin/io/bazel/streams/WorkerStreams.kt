@@ -3,6 +3,7 @@ package io.bazel.streems
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import io.bazel.Logs
 import io.bazel.value.WorkRequest
 import io.bazel.value.WorkResponse
 import io.reactivex.rxjava3.core.BackpressureStrategy
@@ -42,15 +43,20 @@ interface WorkerStreams {
             override fun subscribe(emitter: FlowableEmitter<WorkRequest>) {
                 while (!emitter.isCancelled) {
                     try {
+                        Logs.logs.log("DefaultWorkerStreams subscribe start")
                         val request = requestAdapter.fromJson(requestSource)
+                        Logs.logs.log("DefaultWorkerStreams request=$request")
                         if (request == null) {
                             emitter.onComplete()
                         } else {
                             emitter.onNext(request)
                         }
                     } catch (e: IOException) {
+                        Logs.logs.log("DefaultWorkerStreams subscribe error")
+                        Logs.logs.log(e)
                         emitter.onComplete()
                     }
+                    Logs.logs.log("WorkResponseSink subscribe end")
                 }
             }
         }
@@ -70,10 +76,15 @@ interface WorkerStreams {
 
             override fun accept(response: WorkResponse) {
                 try {
+                    Logs.logs.log("WorkResponseSink accept 1")
                     responseAdapter.toJson(responseSink, response)
+                    Logs.logs.log("WorkResponseSink accept 2")
                     responseSink.flush()
                 } catch (ignored: IOException) {
+                    Logs.logs.log("DefaultWorkerStreams subscribe error")
+                    Logs.logs.log(ignored)
                 }
+                Logs.logs.log("WorkResponseSink accept 3")
             }
         }
 

@@ -17,17 +17,20 @@
 package com.grab.aapt
 
 import com.grab.aapt.databinding.mapper.GenerateMapperCommand
+import io.bazel.Logs
 import io.bazel.Worker
 
 
 enum class Tool {
     AAPT_LITE {
         override fun call(args: Array<String>) {
+            Logs.logs.log("Tool AAPT_LITE call args=${args.contentToString()}")
             AaptLiteCommand().main(args)
         }
     },
     DATABINDING_MAPPER {
         override fun call(args: Array<String>) {
+            Logs.logs.log("Tool DATABINDING_MAPPER call args=${args.contentToString()}")
             GenerateMapperCommand().main(args)
         }
     };

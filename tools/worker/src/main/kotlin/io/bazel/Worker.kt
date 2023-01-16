@@ -18,7 +18,11 @@ interface Worker {
 
     companion object {
         fun create(args: Array<String>, action: (args: Array<String>) -> Unit): Worker {
-
+            Logs.logs.log("""----------------------------------------------------------------------------------
+                |Worker create 
+                |args=${args.contentToString()}
+                |
+            """.trimMargin())
             val work: Work = DefaultWork(action)
             val streams: Streams = Streams.DefaultStreams()
 
@@ -38,19 +42,20 @@ interface Worker {
 
 private val FLAG_FILE_REGEX = Regex("""^--flagfile=((.*)-(\d+).params)$""")
 
+private fun commandLineArgs(args: Array<String>): Array<String> {
+    return FLAG_FILE_REGEX.matchEntire(args.first())?.groups?.get(1)?.let {
+        Files.readAllLines(FileSystems.getDefault().getPath(it.value), StandardCharsets.UTF_8)
+    }?.toTypedArray() ?: arrayOf()
+}
+
 class PersistentWorker(
     private val work: Work,
     private val streams: WorkerStreams,
     private val scheduler: Scheduler
 ) : Worker {
 
-    private fun commandLineArgs(args: Array<String>): Array<String> {
-        return FLAG_FILE_REGEX.matchEntire(args.first())?.groups?.get(1)?.let {
-            Files.readAllLines(FileSystems.getDefault().getPath(it.value), StandardCharsets.UTF_8)
-        }?.toTypedArray() ?: arrayOf()
-    }
-
     override fun run() {
+        Logs.logs.log("PersistentWorker run")
         streams.request()
             .subscribeOn(scheduler)
             .parallel()
@@ -71,7 +76,7 @@ class SingleShotWorker(
     private val args: Array<String>
 ) : Worker {
     override fun run() {
-        val result = work.execute(args)
+        val result = work.execute(commandLineArgs(args))
         if (result is WorkResult.Failure) {
             streams.error.println(result.output)
         }

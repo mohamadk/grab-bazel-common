@@ -24,6 +24,7 @@ import com.grab.aapt.databinding.binding.store.LOCAL
 import com.grab.aapt.databinding.binding.store.LayoutTypeStore
 import com.grab.aapt.databinding.di.AaptScope
 import com.grab.aapt.databinding.util.attributesNameValue
+import com.grab.aapt.databinding.util.capitalize
 import com.grab.aapt.databinding.util.events
 import com.grab.aapt.databinding.util.toLayoutBindingName
 import com.squareup.javapoet.ArrayTypeName
@@ -32,6 +33,8 @@ import com.squareup.javapoet.ParameterizedTypeName
 import com.squareup.javapoet.TypeName
 import dagger.Binds
 import dagger.Module
+import io.bazel.Logs
+import org.xmlpull.v1.XmlPullParser.END_DOCUMENT
 import org.xmlpull.v1.XmlPullParser.START_TAG
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.File
@@ -88,7 +91,9 @@ constructor(
         layoutFiles: List<File>
     ): List<LayoutBindingData> {
         return layoutFiles.map { layoutFile ->
-            layoutFile.inputStream().buffered().use { stream ->
+            Logs.logs.log("DefaultLayoutBindingsParser parse $layoutFile")
+            layoutFile.inputStream().buffered(2 * 1024).use { stream ->
+                Logs.logs.log("DefaultLayoutBindingsParser 2 parse $layoutFile")
                 xpp.setInput(stream, null)
                 val bindingClassName = layoutFile.bindingName
                 val bindings = mutableSetOf<Binding>()
@@ -96,47 +101,36 @@ constructor(
 
                 val importedTypes: ImportedTypes = mutableMapOf()
 
-                xpp.events()
-                    .asSequence()
-                    .forEach { event: Int ->
-                        if (event == START_TAG) {
-                            when (val nodeName = xpp.name) {
-                                IMPORT -> {
-                                    val attributes = xpp.attributesNameValue()
-                                        .withDefault { error("Could not parse: $it") }
-                                    val typeFqcn = attributes.getValue(TYPE)
-                                    val typeName = attributes[ALIAS] ?: typeFqcn.split(".").last()
-                                    importedTypes[typeName] = ClassName.bestGuess(typeFqcn)
-                                }
-                                VARIABLE -> {
-                                    val attributes = xpp.attributesNameValue()
-                                        .withDefault { error("Could not parse: $it") }
-                                    bindables.add(
-                                        Binding(
-                                            rawName = attributes.getValue(NAME),
-                                            typeName = attributes.getValue(TYPE).toTypeName(
-                                                importedTypes = importedTypes
-                                            ),
-                                            bindingType = BindingType.Variable
-                                        )
-                                    )
-                                }
-                                else -> {
-                                    val attributes = xpp.attributesNameValue()
-                                        .filterKeys { it == ANDROID_ID || it == LAYOUT }
-                                        .withDefault {
-                                            error("Could not parse: $it in $packageName:$layoutFile")
-                                        }
 
-                                    parseBinding(
-                                        packageName,
-                                        nodeName,
-                                        attributes
-                                    )?.let(bindings::add)
-                                }
-                            }
+//                    .asSequence()
+
+//
+                try {
+                    while (true) {
+                        Logs.logs.log("DefaultLayoutBindingsParser 3 parse $layoutFile")
+                        val event = xpp.next()
+                        Logs.logs.log("DefaultLayoutBindingsParser 4 parse $layoutFile")
+                        if (event == END_DOCUMENT) {
+                            Logs.logs.log("DefaultLayoutBindingsParser 5 parse $layoutFile")
+                            break
                         }
+                        build(event, importedTypes, bindables, packageName, layoutFile, bindings)
+                        Logs.logs.log("DefaultLayoutBindingsParser 6 parse $layoutFile")
                     }
+//
+//                          xpp.events().asSequence().forEach { event: Int ->
+//                            Logs.logs.log("DefaultLayoutBindingsParser 3 parse $layoutFile")
+//                            build(event, importedTypes, bindables, packageName, layoutFile, bindings)
+//                          Logs.logs.log("DefaultLayoutBindingsParser 4 parse $layoutFile")
+//                            }.apply {
+//                                Logs.logs.log("DefaultLayoutBindingsParser end $layoutFile")
+//                            }
+                } catch (e: Exception) {
+                    Logs.logs.log("DefaultLayoutBindingsParser 7 parse $layoutFile")
+                    Logs.logs.log(e)
+                    throw e
+                }
+
                 LayoutBindingData(
                     bindingClassName,
                     layoutFile,
@@ -145,6 +139,90 @@ constructor(
                 )
             }
         }.distinctBy(LayoutBindingData::layoutName)
+    }
+
+    private fun build(
+        event: Int,
+        importedTypes: ImportedTypes,
+        bindables: MutableSet<Binding>,
+        packageName: String,
+        layoutFile: File,
+        bindings: MutableSet<Binding>
+    ) {
+        Logs.logs.log("DefaultLayoutBindingsParser 8 build $layoutFile")
+        if (event == START_TAG) {
+            Logs.logs.log("DefaultLayoutBindingsParser 9 build $layoutFile")
+            when (val nodeName = xpp.name) {
+                IMPORT -> {
+                    Logs.logs.log("DefaultLayoutBindingsParser 10 build $layoutFile")
+                    val attributes = xpp.attributesNameValue()
+                        .withDefault { error("Could not parse: $it") }
+                    Logs.logs.log("DefaultLayoutBindingsParser 10.1 build $layoutFile")
+                    val typeFqcn = attributes.getValue(TYPE)
+                    Logs.logs.log("DefaultLayoutBindingsParser 10.2 build $layoutFile")
+                    val typeName = attributes[ALIAS] ?: typeFqcn.split(".").last()
+                    Logs.logs.log("DefaultLayoutBindingsParser 11 build $layoutFile")
+                    importedTypes[typeName] = ClassName.bestGuess(typeFqcn)
+                }
+                VARIABLE -> {
+                    Logs.logs.log("DefaultLayoutBindingsParser 12 build $layoutFile")
+                    val attributes = xpp.attributesNameValue()
+                        .withDefault { error("Could not parse: $it") }
+
+                    Logs.logs.log("DefaultLayoutBindingsParser 13 build $layoutFile")
+                    val rawName = attributes.getValue(NAME)
+                    Logs.logs.log("DefaultLayoutBindingsParser 13.1 build $layoutFile")
+                    val typeName1 = attributes.getValue(TYPE)
+                    Logs.logs.log("DefaultLayoutBindingsParser 13.1.1 build $layoutFile")
+                    val typeName = typeName1.toTypeName(importedTypes = importedTypes,layoutFile.toString() )
+                    Logs.logs.log("DefaultLayoutBindingsParser 13.2 build $layoutFile")
+                    val bindingType = BindingType.Variable
+                    Logs.logs.log("DefaultLayoutBindingsParser 13.3 build $layoutFile")
+
+                    val a = rawName
+                    Logs.logs.log("DefaultLayoutBindingsParser 13.4 build a=$a $layoutFile")
+                    val b = a.split("_")
+                    Logs.logs.log("DefaultLayoutBindingsParser 13.5 build b=$b $layoutFile")
+                    val c = b.joinToString(
+                        separator = "",
+                        transform = String::capitalize
+                    )
+                    Logs.logs.log("DefaultLayoutBindingsParser 13.6 build c=$c $layoutFile")
+                    val d = c.let { Character.toLowerCase(it.first()) + it.substring(1) }
+                    Logs.logs.log("DefaultLayoutBindingsParser 13.7 build d=$d $layoutFile")
+
+
+                    val bind = Binding(
+                        rawName = rawName,
+                        typeName = typeName,
+                        bindingType = bindingType
+                    )
+                    Logs.logs.log("DefaultLayoutBindingsParser 13.8 build $layoutFile")
+                    bindables.add(
+                        bind
+                    )
+                    Logs.logs.log("DefaultLayoutBindingsParser 14 build $layoutFile")
+                }
+                else -> {
+                    Logs.logs.log("DefaultLayoutBindingsParser 15 build $layoutFile")
+                    val attributes = xpp.attributesNameValue()
+                        .filterKeys { it == ANDROID_ID || it == LAYOUT }
+                        .withDefault {
+                            error("Could not parse: $it in $packageName:$layoutFile")
+                        }
+                    Logs.logs.log("DefaultLayoutBindingsParser 16 build $layoutFile")
+
+                    parseBinding(
+                        packageName,
+                        nodeName,
+                        attributes
+                    )?.let(bindings::add)
+                    Logs.logs.log("DefaultLayoutBindingsParser 17 build $layoutFile")
+                }
+            }
+            Logs.logs.log("DefaultLayoutBindingsParser 18 build $layoutFile")
+        }
+        Logs.logs.log("DefaultLayoutBindingsParser 19 build $layoutFile")
     }
 
     /**
@@ -157,31 +235,86 @@ constructor(
      */
     private fun String.toTypeName(
         importedTypes: ImportedTypes,
+        name:String
     ): TypeName {
+        Logs.logs.log("String.toTypeName $name 1")
+//        val genericEnd = this.lastIndexOf(">")
+//        Logs.logs.log("String.toTypeName $name 2 genericEnd=$genericEnd ${Thread.currentThread().name}")
+//        if (genericEnd >= 0) {
+//            Logs.logs.log("String.toTypeName $name 3")
+//            val genericStart = this.indexOf("<")
+//            Logs.logs.log("String.toTypeName $name 4")
+//            if (genericStart >= 0) {
+//                Logs.logs.log("String.toTypeName $name 5")
+//                val typeParams = this.substring(genericStart + 1, genericEnd).trim()
+//                Logs.logs.log("String.toTypeName $name 6")
+//                val typeParamsQualified = splitTemplateParameters(typeParams).map {
+//                    Logs.logs.log("String.toTypeName $name 7")
+//                    it.toTypeName(importedTypes,name)
+//                }
+//                Logs.logs.log("String.toTypeName $name 8")
+//                val klass = this.substring(0, genericStart)
+//                    .trim()
+//                    .toTypeName(importedTypes,name)
+//                Logs.logs.log("String.toTypeName $name 9")
+//                return ParameterizedTypeName.get(klass as ClassName,
+//                    *typeParamsQualified.toTypedArray()).also {
+//                    Logs.logs.log("String.toTypeName $name 10")
+//                }
+//            }
+//        }
+//        Logs.logs.log("String.toTypeName $name 11 $this")
+//        Logs.logs.log("String.toTypeName $name 11.1 $this $PRIMITIVE_TYPE_NAME_MAP")
+//        val map=PRIMITIVE_TYPE_NAME_MAP[this]
+//        Logs.logs.log("String.toTypeName $name 12 map=$map")
+//        return (map ?: ClassName.bestGuess(this)).also {
+//            Logs.logs.log("String.toTypeName $name 13 map=$map")
+//        }
+
+
+
         if (this.endsWith("[]")) {
+            Logs.logs.log("String.toTypeName $name 2 ${Thread.currentThread().name}")
             val qType = this.substring(0, this.length - 2)
                 .trim()
-                .toTypeName(importedTypes)
+                .toTypeName(importedTypes,name)
+            Logs.logs.log("String.toTypeName $name 3  ${Thread.currentThread().name}")
             return ArrayTypeName.of(qType)
         }
+        Logs.logs.log("String.toTypeName $name 4  ${Thread.currentThread().name}")
         val genericEnd = this.lastIndexOf(">")
+        Logs.logs.log("String.toTypeName $name 5 genericEnd=$genericEnd ${Thread.currentThread().name}")
         if (genericEnd > 0) {
+            Logs.logs.log("String.toTypeName $name 6  ${Thread.currentThread().name}")
             val genericStart = this.indexOf("<")
+            Logs.logs.log("String.toTypeName $name 7  ${Thread.currentThread().name}")
             if (genericStart > 0) {
+                Logs.logs.log("String.toTypeName $name 8  ${Thread.currentThread().name}")
                 val typeParams = this.substring(genericStart + 1, genericEnd).trim()
+                Logs.logs.log("String.toTypeName $name 9  ${Thread.currentThread().name}")
                 val typeParamsQualified = splitTemplateParameters(typeParams).map {
-                    it.toTypeName(importedTypes)
+                    Logs.logs.log("String.toTypeName $name 10  ${Thread.currentThread().name}")
+                    it.toTypeName(importedTypes,name)
                 }
+                Logs.logs.log("String.toTypeName $name 11  ${Thread.currentThread().name}")
                 val klass = this.substring(0, genericStart)
                     .trim()
-                    .toTypeName(importedTypes)
-                return ParameterizedTypeName.get(klass as ClassName,
-                        *typeParamsQualified.toTypedArray())
+                    .toTypeName(importedTypes,name)
+                Logs.logs.log("String.toTypeName $name 12  ${Thread.currentThread().name}")
+                return ParameterizedTypeName.get(
+                    klass as ClassName,
+                    *typeParamsQualified.toTypedArray()
+                ).also {
+                    Logs.logs.log("String.toTypeName $name 13  ${Thread.currentThread().name}")
+                }
             }
         }
-
+        Logs.logs.log("String.toTypeName $name 14  ${Thread.currentThread().name}")
         importedTypes[this]?.let { return it }
-        return PRIMITIVE_TYPE_NAME_MAP[this] ?: ClassName.bestGuess(this)
+        Logs.logs.log("String.toTypeName $name 15  ${Thread.currentThread().name} PRIMITIVE_TYPE_NAME_MAP[this]=${PRIMITIVE_TYPE_NAME_MAP[this]}")
+        return PRIMITIVE_TYPE_NAME_MAP[this] ?: ClassName.bestGuess(this).also {
+            Logs.logs.log("String.toTypeName $name 16  ${Thread.currentThread().name}")
+        }
     }
 
     /**
@@ -220,37 +353,60 @@ constructor(
         packageName: String,
         nodeName: String,
         attributes: Map<String, String>
-    ): Binding? =
-        if (attributes.containsKey(ANDROID_ID) && attributes.getValue(ANDROID_ID).contains("+")) {
+    ): Binding? {
+        Logs.logs.log("parseBinding $packageName 1 nodeName=$nodeName")
+        return if (attributes.containsKey(ANDROID_ID) && attributes.getValue(ANDROID_ID).contains("+")) {
+            Logs.logs.log("parseBinding $packageName 2 nodeName=$nodeName")
             val idValue = attributes.getValue(ANDROID_ID)
+            Logs.logs.log("parseBinding $packageName 3 nodeName=$nodeName")
             val parsedId = idValue.split("@+id/").last()
-
+            Logs.logs.log("parseBinding $packageName 4 nodeName=$nodeName")
             // Flag to note if included layout type can't be found in either local or deps
             var layoutMissing = false
-
+            Logs.logs.log("parseBinding $packageName 5 nodeName=$nodeName")
             val type: TypeName = when {
-                nodeName.contains(".") -> ClassName.bestGuess(nodeName)
+
+                nodeName.contains(".") -> {
+                    Logs.logs.log("parseBinding $packageName 6 nodeName=$nodeName")
+                    ClassName.bestGuess(nodeName)
+                }
                 nodeName == INCLUDE -> {
+                    Logs.logs.log("parseBinding $packageName 7 nodeName=$nodeName")
                     val (parsedType, missing) = parseIncludeTag(attributes, packageName)
                     layoutMissing = missing
+                    Logs.logs.log("parseBinding $packageName 8 nodeName=$nodeName")
                     parsedType
                 }
                 else -> when (nodeName) {
-                    "ViewStub" -> ClassName.bestGuess("androidx.databinding.ViewStubProxy")
+                    "ViewStub" -> {
+                        Logs.logs.log("parseBinding $packageName 10 nodeName=$nodeName")
+                        ClassName.bestGuess("androidx.databinding.ViewStubProxy")
+                    }
                     // https://android.googlesource.com/platform/frameworks/data-binding/+/refs/tags/studio-4.1.1/compilerCommon/src/main/java/android/databinding/tool/store/ResourceBundle.java#70
                     "View", "ViewGroup", "TextureView", "SurfaceView" -> {
+                        Logs.logs.log("parseBinding $packageName 11 nodeName=$nodeName")
                         ClassName.get("android.view", nodeName)
                     }
-                    "WebView" -> ClassName.get("android.webkit", nodeName)
-                    else -> ClassName.get("android.widget", nodeName)
+                    "WebView" -> {
+                        Logs.logs.log("parseBinding $packageName 12 nodeName=$nodeName")
+                        ClassName.get("android.webkit", nodeName)}
+                    else ->{
+                        Logs.logs.log("parseBinding $packageName 13 nodeName=$nodeName")
+                        ClassName.get("android.widget", nodeName)
+                    }
                 }
             }
+            Logs.logs.log("parseBinding $packageName 14 nodeName=$nodeName")
             Binding(
                 rawName = parsedId,
                 typeName = type,
                 bindingType = parseBindingType(nodeName, attributes, layoutMissing)
-            )
+            ).also {
+                Logs.logs.log("parseBinding $packageName 15 nodeName=$nodeName")
+            }
+
         } else null
+    }
 
     /**
      * Infers the generated layout type from either current module layout files or ones present in
@@ -322,4 +478,5 @@ private val PRIMITIVE_TYPE_NAME_MAP = mapOf(
     TypeName.LONG.toString() to TypeName.LONG,
     TypeName.CHAR.toString() to TypeName.CHAR,
     TypeName.FLOAT.toString() to TypeName.FLOAT,
-    TypeName.DOUBLE.toString() to TypeName.DOUBLE)
+    TypeName.DOUBLE.toString() to TypeName.DOUBLE
+)

@@ -23,6 +23,7 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.options.split
+import io.bazel.Logs
 import java.io.File
 
 class AaptLiteCommand : CliktCommand() {
@@ -70,13 +71,18 @@ class AaptLiteCommand : CliktCommand() {
     ).convert { File(it) }.required()
 
     override fun run() {
+        Logs.logs.log("run 1 $packageName" )
+
         val resourcesFiles = resources.map { path -> File(path) }
+        Logs.logs.log("run 2 $packageName")
         val layoutFiles = resourcesFiles.filter { it.path.contains("/layout") }
-
+        Logs.logs.log("run 3 $packageName")
         val classInfoZip = classInfos.map { File(it) }
+        Logs.logs.log("run 4 $packageName")
         val depRTxts = rTxts.map { File(it) }
+        Logs.logs.log("run 5 $packageName")
         val baseDir = File(packageName.replace(".", File.separator))
-
+        Logs.logs.log("run 6 $packageName")
         val command = DaggerAaptLiteComponent.factory().create(
             baseDir = baseDir,
             packageName = packageName,
@@ -86,19 +92,24 @@ class AaptLiteCommand : CliktCommand() {
             rTxts = depRTxts,
             nonTransitiveRClass = nonTransitiveRClass,
         )
+        Logs.logs.log("run 7 $packageName")
         val layoutBindings = command.layoutBindingsParser().parse(packageName, layoutFiles)
+        Logs.logs.log("run 8 $packageName")
         command.resToRClassGenerator().generate(packageName, resourcesFiles, depRTxts)
-
+        Logs.logs.log("run 9 $packageName ")
         val rClasses = command.brClassGenerator().generate(packageName, layoutBindings)
+        Logs.logs.log("run 10 $packageName")
         command.srcJarPackager.packageSrcJar(inputDir = rClasses, outputFile = rClassSrcJar)
-
+        Logs.logs.log("run 11 $packageName")
         val dataBindingClasses = command.bindingClassGenerator().generate(
             packageName,
             layoutBindings
         )
+        Logs.logs.log("run 12 $packageName")
         command.srcJarPackager.packageSrcJar(
             inputDir = dataBindingClasses,
             outputFile = stubClassJar
         )
+        Logs.logs.log("run 13 $packageName")
     }
 }
