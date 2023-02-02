@@ -54,7 +54,7 @@ class BuildConfigTest {
             "String with special characters"
         )
         assertEquals(
-            "\$ Hello",
+            "\\$ Hello",
             BuildConfig.FIELD_WITH_ESCAPED_DOLLAR,
             "String with existing escaped dollar"
         )
@@ -80,5 +80,10 @@ class BuildConfigTest {
     @Test
     fun `assert generated longs in build config`() {
         assertEquals(123, BuildConfig.LONG, "Generated long is 0")
+    }
+
+    @Test
+    fun `assert default config selected`() {
+        assertEquals("default value", BuildConfig.SELECT, "default value is selected")
     }
 }
